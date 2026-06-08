@@ -251,7 +251,6 @@
         body.modal-open, html.modal-open {
             overflow: hidden !important;
             height: 100% !important;
-            touch-action: none !important;
         }
 
         .modal-content {
@@ -2118,7 +2117,7 @@
                     closeModal();
                     closeNewsModal();
                     openLoginModal('login');
-                    showToast('Ваш акаунт був видалений або вийшов з системи.', 'error');
+                    showToast('Ваш акаунт був видалений або вийшов з системи. Зареєструйтеся знову.', 'error');
                 }
             }
 
@@ -2467,7 +2466,11 @@
                 }
             }
 
-            document.getElementById('modalOverlay').classList.add('active');
+            const modalOverlay = document.getElementById('modalOverlay');
+            if (modalOverlay) {
+                modalOverlay.style.display = 'flex';
+                modalOverlay.classList.add('active');
+            }
             updateBodyScrollLock();
         }
 
@@ -2948,6 +2951,33 @@
 
         function closeAdminMini() { const o = document.getElementById('adminMiniModal'); if (!o) return; o.classList.remove('active'); o.style.display = 'none'; updateBodyScrollLock(); }
 
+        let savedBodyScrollY = 0;
+        let isBodyScrollLocked = false;
+
+        function lockBodyScroll() {
+            if (isBodyScrollLocked) return;
+            savedBodyScrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${savedBodyScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            isBodyScrollLocked = true;
+        }
+
+        function unlockBodyScroll() {
+            if (!isBodyScrollLocked) return;
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            isBodyScrollLocked = false;
+            window.requestAnimationFrame(() => {
+                window.scrollTo(0, savedBodyScrollY);
+            });
+        }
+
         function updateBodyScrollLock() {
             const overlays = Array.from(document.querySelectorAll('.modal-overlay, .order-window-overlay, .order-receipt-overlay'));
             const isAnyOpen = overlays.some(el => {
@@ -2959,9 +2989,19 @@
             if (isAnyOpen) {
                 document.documentElement.classList.add('modal-open');
                 document.body.classList.add('modal-open');
+                document.documentElement.style.overflow = 'hidden';
+                document.body.style.overflow = 'hidden';
+                document.documentElement.style.height = '100%';
+                document.body.style.height = '100%';
+                lockBodyScroll();
             } else {
                 document.documentElement.classList.remove('modal-open');
                 document.body.classList.remove('modal-open');
+                document.documentElement.style.overflow = '';
+                document.body.style.overflow = '';
+                document.documentElement.style.height = '';
+                document.body.style.height = '';
+                unlockBodyScroll();
             }
         }
 
@@ -2997,6 +3037,7 @@
         function openOrderWindow() {
             const overlay = document.getElementById('orderWindowOverlay');
             if (!overlay) return;
+            overlay.style.display = 'flex';
             overlay.classList.add('active');
             updateBodyScrollLock();
             const success = document.getElementById('orderSuccessMessage');
@@ -3149,6 +3190,7 @@
             const overlay = document.getElementById('orderReceiptOverlay');
             if (!overlay) return;
             overlay.classList.remove('active');
+            overlay.style.display = 'none';
             updateBodyScrollLock();
         }
 
@@ -3245,6 +3287,7 @@
             const overlay = document.getElementById('orderWindowOverlay');
             if (!overlay) return;
             overlay.classList.remove('active');
+            overlay.style.display = 'none';
             updateBodyScrollLock();
         }
 
@@ -3368,6 +3411,7 @@
         function toggleReform(index) {
             const card = document.getElementById(`reform-card-${index}`);
             const body = document.getElementById(`reform-body-${index}`);
+            const currentScroll = window.pageYOffset || document.documentElement.scrollTop || 0;
             
             if (card.classList.contains('active')) {
                 body.style.maxHeight = null;
@@ -3376,6 +3420,9 @@
                 body.style.maxHeight = body.scrollHeight + "px";
                 card.classList.add('active');
             }
+            window.requestAnimationFrame(() => {
+                window.scrollTo(0, currentScroll);
+            });
         }
 
         function openNewsModal() {
@@ -3418,7 +3465,11 @@
         }
 
         function closeModal() {
-            document.getElementById('modalOverlay').classList.remove('active');
+            const overlay = document.getElementById('modalOverlay');
+            if (overlay) {
+                overlay.classList.remove('active');
+                overlay.style.display = 'none';
+            }
             modalOverlayClosable = true;
             updateBodyScrollLock();
         }
@@ -3462,6 +3513,7 @@
             const overlay = document.getElementById('loginModalOverlay');
             if (!overlay) return;
             overlay.classList.remove('active');
+            updateBodyScrollLock();
             if (!isLogoutState()) {
                 markAuthPromptShown();
             }
