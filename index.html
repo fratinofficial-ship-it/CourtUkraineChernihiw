@@ -1929,9 +1929,21 @@
 
         function ensureClearCourtDataOnce() {
             try {
-                if (localStorage.getItem('courtDataClearCompleted') !== '1') {
-                    clearAllAccountsAndTreasury();
+                if (localStorage.getItem('courtDataClearCompleted') === '1') {
+                    return;
                 }
+
+                const hasSavedUser = !!(localStorage.getItem('courtCurrentUser') || sessionStorage.getItem('courtCurrentUser'));
+                const hasSavedUsers = !!localStorage.getItem('courtUsers');
+                const hasSavedState = hasSavedUser || hasSavedUsers;
+
+                if (hasSavedState) {
+                    // Якщо є збережені акаунти або поточний користувач, не очищати дані при першому завантаженні.
+                    localStorage.setItem('courtDataClearCompleted', '1');
+                    return;
+                }
+
+                clearAllAccountsAndTreasury();
             } catch (e) {
                 console.warn('Could not check clear completion flag', e);
             }
@@ -3370,6 +3382,7 @@
             const overlay = document.getElementById('newsModalOverlay');
             const modalContent = document.getElementById('newsModalContent');
             if (!overlay || !modalContent) return;
+            overlay.classList.add('active');
             overlay.style.pointerEvents = 'auto';
             overlay.style.opacity = '1';
             overlay.style.display = 'flex';
@@ -3386,11 +3399,16 @@
             const overlay = document.getElementById('newsModalOverlay');
             const modalContent = document.getElementById('newsModalContent');
             if (!overlay || !modalContent) return;
+            overlay.classList.remove('active');
             overlay.style.pointerEvents = 'none';
             overlay.style.opacity = '0';
             modalContent.style.transform = 'scale(0.95)';
             modalContent.style.opacity = '0';
             updateBodyScrollLock();
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                updateBodyScrollLock();
+            }, 360);
         }
 
         function handleModalOverlayClick() {
@@ -3524,118 +3542,6 @@
             setTimeout(() => {
                 if (toast.parentNode) toast.parentNode.removeChild(toast);
             }, 3200);
-        }
-
-        // ===== ОЧИЩЕННЯ БАЗИ ДАНИХ (Адмін тільки) =====
-        async function clearAllDatabaseCompletely() {
-            console.log('🗑️ Спроба повного очищення бази даних...');
-            
-            // Адміністративний ідентифікатор (залишив для сумісності з існуючими налаштуваннями)
-            const adminIdentifier = 'fratinokrbx@gmail.com';
-
-            // Отримати поточного користувача з пам'яті або зі сховища
-            let cu = typeof currentUser !== 'undefined' ? currentUser : null;
-            if (!cu) {
-                try {
-                    const raw = sessionStorage.getItem('courtCurrentUser') || localStorage.getItem('courtCurrentUser');
-                    if (raw) {
-                        try { cu = JSON.parse(raw); } catch (e) { cu = { username: String(raw) } }
-                    }
-                } catch (e) {
-                    cu = null;
-                }
-            }
-
-            const cuName = cu && cu.username ? String(cu.username).toLowerCase() : '';
-            const isAdminUser = cu && (cu.role === 'admin' || cuName === String(adminIdentifier).toLowerCase());
-
-            if (!isAdminUser) {
-                console.warn('🔒 Спроба очищення бази від не-адміна:', cu ? cu.username : 'невідомий');
-                showToast('Тільки адміністратор може очистити базу даних.', 'error');
-                return;
-            }
-
-            // Додаткова явна підтверджуюча перевірка
-            try {
-                const confirmText = prompt('Увага! Це видалить ВСІ дані. Введіть DELETE щоб підтвердити.');
-                if (!confirmText) {
-                    showToast('Операцію скасовано.', 'info');
-                    return;
-                }
-                if (String(confirmText).trim() !== 'DELETE') {
-                    showToast('Невірне підтвердження. Очищення скасовано.', 'error');
-                    return;
-                }
-            } catch (e) {
-                showToast('Підтвердження не пройшло. Операцію скасовано.', 'error');
-                return;
-            }
-
-            try {
-                console.log('🗑️ Розпочато повне очищення бази даних (адмін):', cu.username || cuName);
-
-                // 1. Очищення localStorage
-                const localStorageKeys = [
-                    'courtBalance', 'courtTransactions', 'courtNews', 'courtUsers',
-                    'courtCurrentUser', 'courtOrders', 'passwords', 'current_user',
-                    'users', 'auth_logout_state', 'court_data_loaded', 'courtDataClearCompleted',
-                    'orders', 'admin_user'
-                ];
-                localStorageKeys.forEach(key => {
-                    try { localStorage.removeItem(key); } catch (e) {}
-                    console.log(`✅ Видалено localStorage: ${key}`);
-                });
-
-                // 2. Очищення sessionStorage
-                const sessionStorageKeys = ['courtCurrentUser'];
-                sessionStorageKeys.forEach(key => {
-                    try { sessionStorage.removeItem(key); } catch (e) {}
-                    console.log(`✅ Видалено sessionStorage: ${key}`);
-                });
-
-                // 3. Очищення in-memory змінних
-                try { users = []; } catch (e) {}
-                try { currentUser = null; } catch (e) {}
-                try { currentBalance = 0; } catch (e) {}
-                try { transactions = []; } catch (e) {}
-                try { news = []; } catch (e) {}
-                try { orders = []; } catch (e) {}
-                console.log('✅ Очищена пам\'ять (users, currentUser, orders, тощо)');
-
-                // 4. Очищення Firestore (якщо доступна)
-                if (window.db) {
-                    const collections = ['court_passwords', 'court_orders', 'court_users', 'court_audit_logs', 'court'];
-                    
-                    for (const collectionName of collections) {
-                        try {
-                            const q = query(collection(window.db, collectionName));
-                            const snapshot = await getDocs(q);
-                            let deletedCount = 0;
-                            
-                            for (const docSnap of snapshot.docs) {
-                                try { await deleteDoc(doc(window.db, collectionName, docSnap.id)); } catch (e) {}
-                                deletedCount++;
-                            }
-                            
-                            console.log(`✅ Firestore колекція "${collectionName}": видалено ${deletedCount} документів`);
-                        } catch (e) {
-                            console.log(`⚠️ Помилка при очищенні ${collectionName}:`, e && e.message ? e.message : e);
-                        }
-                    }
-                }
-                
-                // 5. Перезавантажити сторінку
-                console.log('🔄 Перезавантажуємо сторінку...');
-                showToast('База даних повністю очищена! Сторінка перезавантажується...', 'success');
-                
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-                
-            } catch (error) {
-                console.error('❌ Помилка при очищенні бази даних:', error);
-                showToast('Помилка при очищенні бази даних!', 'error');
-            }
         }
 
         function togglePasswordVisibility(fieldId, buttonId) {
